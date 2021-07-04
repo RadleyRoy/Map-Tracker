@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html class='use-all-space'>
+<head>
+    <meta http-equiv='X-UA-Compatible' content='IE=Edge' />
+    <meta charset='UTF-8'>
+    <title>Maps SDK for Web - Vector map</title>
+    <meta name='viewport'
+          content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'/>
+    <link rel='stylesheet' type='text/css' href='https://api.tomtom.com/maps-sdk-for-web/cdn/5.x/5.53.0/maps/maps.css'>
+    <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/5.x/5.53.0/maps/maps-web.min.js"></script>
+    <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/5.x/5.53.0/services/services-web.min.js"></script>
+    <style>
+        #homemarker {
+            background-image: url('https://static.thenounproject.com/png/5148-200.png');
+            background-size: cover;
+            width: 40px;
+            height: 40px;
+            }
+        #shopmarker {
+            background-image: url('https://static.thenounproject.com/png/37156-200.png');
+            background-size: cover;
+            width: 60px;
+            height: 60px;
+            }
+        .runnermarker {
+            background-image: url('https://static.thenounproject.com/png/331569-200.png');
+            background-size: cover;
+            width: 60px;
+            height: 60px;
+            }
+    </style>
+
+
+</head>
+<body>
+    <input type="text" id="query" value="">
+    <button onclick='search()'>Search</button>
+    <button onclick='geocoder()'>Get Markers</button>
+    <button onclick='route()'>Create Route</button>
+    <div><input type="text" id="runner" value=''><button onclick="runner()">Update Runner</button></div>
+    <div id='distance'></div>
+    <div id='time'></div>
+
+    
+
+    <div style="width:99vw; height: 84vh;" id='map'></div>
+    
+    <script>
+        var markers = []
+        temp_markers = []
+        var route_markers = []
+
+        var map = tt.map({
+            key: '{{api_key}}',
+            container: 'map',
+            basePath: 'sdk/',
+            center: [72.877426,19.076090], // Mumbai
+            zoom: 12,
+            theme: {
+                style: 'buildings',
+                layer: 'basic',
+                source: 'vector'
+            }
+        });
+        map.addControl(new tt.NavigationControl());
+
+        var moveMap = function(lnglat) {
+            map.flyTo({
+                center : lnglat,
+                zoom: 14
+            })
+        }
+
+        var handleResults = function(result) {
+            console.log(result);
+            if (result.results) {
+                moveMap(result.results[0].position)
+            }
+            };
+
+
+        var search = function() {
+            tt.services.fuzzySearch({
+                key: '{{api_key}}',
+                query: document.getElementById('query').value,
+            }).go().then(handleResults)
+        }
+
+        var clearMarkers = function() {
+            temp_markers.forEach(element => {
+                element.remove();
+            });
+            markers = []
+            temp_markers = []
+        }
+
+        map.on('click', function(event){
+            console.log(event)
+            marker = new tt.Marker().setLngLat(event.lngLat).addTo(map);
+            markers.push(event.lngLat);
+            temp_markers.push(marker);
+        })
+
+        var route = function(event) {
+            var routeOptions = {
+                key : '{{api_key}}',
+                locations : route_markers,
+                travelMode : 'motorcycle',
+            }
+            tt.services.calculateRoute(routeOptions).go().then(
+                function(routeData) {
+                    var time = routeData.routes[0].summary.travelTimeInSeconds
+                    document.getElementById('distance').innerHTML = 'Total Distance = '+routeData.routes[0].summary.lengthInMeters+' meters'
+                    document.getElementById('time').innerHTML = 'Estimated Time = ' + (time/60).toFixed(2) + ' minutes'
+                }
+            )
+            createRoute(routeOptions)
+        }
+
+        var createRoute = function(options) {
+            tt.services.calculateRoute(options).go().then(function(response){
+                var geojson = response.toGeoJson()
+                console.log(geojson)
+                map.addLayer({
+                    'id' : 'route',
+                    'type' : 'line',
+                    'source' : {
+                        'type' : 'geojson',
+                        'data' : geojson
+                    },
+                    'paint' : {
+                        'line-color' : 'green',
+                        'line-width' : 6
+                    }
+                })
+            })
+        }
+        
+    
+        function homeMarker(result) {
+            console.log(result);
+            if (result.results) {
+                var markerElement = document.createElement('div');
+                markerElement.id = 'homemarker';
+                moveMap(result.results[0].position)
+                marker = new tt.Marker( {element : markerElement} ).setLngLat(result.results[0].position).addTo(map);
+                markers.push(result.results[0].position);
+                temp_markers.push(marker);
+                route_markers[1] = result.results[0].position;
+            }
+            };
+
+        function shopMarker(result) {
+            console.log(result);
+            if (result.results) {
+                var markerElement = document.createElement('div');
+                markerElement.id = 'shopmarker';
+                moveMap(result.results[0].position)
+                marker = new tt.Marker( {element : markerElement} ).setLngLat(result.results[0].position).addTo(map);
+                markers.push(result.results[0].position);
+                temp_markers.push(marker);
+                route_markers[0] = result.results[0].position;
+            }
+            };
+
+        var a = '{{ buyer.address_line_2 }}';
+        var b = '{{ buyer.city }}';
+        var c = '{{ buyer.state }}';
+        var d = '{{ vendor.address_line_2 }}' + ', ' + '{{ vendor.city }}' + ', ' + '{{ vendor.state }}';
+        
+        var geocoder = function() {
+            tt.services.geocode({
+            key: '{{api_key}}',
+            query: d
+            }).go().then(shopMarker);
+            tt.services.geocode({
+            key: '{{api_key}}',
+            query: a + ', ' + b + ', ' + c 
+            }).go().then(homeMarker);
+        }
+
+        var runner = function() {
+            tt.services.fuzzySearch({
+                key: '{{api_key}}',
+                query: document.getElementById('runner').value,
+            }).go().then(runnerResults)
+            
+            
+        }
+
+        var runnerResults = function(result) {
+            console.log(result);
+            if (result.results) {
+                var markerElement = document.createElement('div');
+                markerElement.className = 'runnermarker';
+                moveMap(result.results[0].position)
+                marker = new tt.Marker({element:markerElement}).setLngLat(result.results[0].position).setDraggable(true).addTo(map)
+                markers[0] = result.results[0].position;
+                if(temp_markers.length == 3){
+                    temp_markers[2].remove();
+                }
+                temp_markers.push(marker);
+                route_markers[0] = result.results[0].position;
+                var routeOptions = {
+                    key : '{{api_key}}',
+                    locations : route_markers,
+                    travelMode : 'motorcycle',
+                }
+                tt.services.calculateRoute(routeOptions).go().then(
+                    function(routeData) {
+                        var time = routeData.routes[0].summary.travelTimeInSeconds
+                        document.getElementById('distance').innerHTML = 'Total Distance = '+routeData.routes[0].summary.lengthInMeters+' meters'
+                        document.getElementById('time').innerHTML = 'Estimated Time = ' + (time/60).toFixed(2) + ' minutes'
+                    }
+                )
+                runnerRoute(routeOptions)
+                }
+            };
+
+        var runnerRoute = function(options) {
+            tt.services.calculateRoute(options).go().then(function(response){
+                var geojson = response.toGeoJson()
+                console.log(geojson)
+                map.removeLayer('route')
+                map.addLayer({
+                    'id' : 'runner',
+                    'type' : 'line',
+                    'source' : {
+                        'type' : 'geojson',
+                        'data' : geojson
+                    },
+                    'paint' : {
+                        'line-color' : 'blue',
+                        'line-width' : 6
+                    }
+                })
+            })
+        }
+
+
+
+
+    </script>
+</body>
+</html>
